@@ -13,6 +13,8 @@ import { categories, type CartItem } from "@/lib/products"
 export default function ShopPage() {
   const searchParams = useSearchParams()
   const categoryParam = searchParams.get("category")
+
+  // Use the inventory context
   const { products, decreaseStock } = useInventory()
 
   const [selectedCategory, setSelectedCategory] = useState<string>(categoryParam || "All")
@@ -25,7 +27,12 @@ export default function ShopPage() {
   useEffect(() => {
     const savedCart = localStorage.getItem("pharmacy-cart")
     if (savedCart) {
-      setCart(JSON.parse(savedCart))
+      try {
+        setCart(JSON.parse(savedCart))
+      } catch (error) {
+        console.error("Error loading cart:", error)
+        setCart([])
+      }
     }
   }, [])
 
@@ -66,32 +73,41 @@ export default function ShopPage() {
   }
 
   const addToCart = (product: any, quantity: number = getQuantity(product.id)) => {
-    // Check if enough stock is available
-    if (product.inStock < quantity) {
-      alert(`Sorry, only ${product.inStock} items available in stock.`)
-      return
-    }
-
-    // Decrease stock in real-time
-    decreaseStock(product.id, quantity)
-
-    setCart((prev) => {
-      const existingItem = prev.find((item) => item.id === product.id)
-      if (existingItem) {
-        return prev.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item))
+    try {
+      // Check if enough stock is available
+      if (product.inStock < quantity) {
+        alert(`Sorry, only ${product.inStock} items available in stock.`)
+        return
       }
-      return [...prev, { ...product, quantity }]
-    })
-    setQuantities((prev) => ({ ...prev, [product.id]: 1 }))
 
-    // Show success message
-    const toast = document.createElement("div")
-    toast.className = "fixed top-20 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 fade-in"
-    toast.textContent = `${product.name} added to cart!`
-    document.body.appendChild(toast)
-    setTimeout(() => {
-      document.body.removeChild(toast)
-    }, 3000)
+      // Decrease stock in real-time
+      if (decreaseStock) {
+        decreaseStock(product.id, quantity)
+      }
+
+      setCart((prev) => {
+        const existingItem = prev.find((item) => item.id === product.id)
+        if (existingItem) {
+          return prev.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item))
+        }
+        return [...prev, { ...product, quantity }]
+      })
+      setQuantities((prev) => ({ ...prev, [product.id]: 1 }))
+
+      // Show success message
+      const toast = document.createElement("div")
+      toast.className = "fixed top-20 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 fade-in"
+      toast.textContent = `${product.name} added to cart!`
+      document.body.appendChild(toast)
+      setTimeout(() => {
+        if (document.body.contains(toast)) {
+          document.body.removeChild(toast)
+        }
+      }, 3000)
+    } catch (error) {
+      console.error("Error adding to cart:", error)
+      alert("There was an error adding the item to your cart. Please try again.")
+    }
   }
 
   const openQuickView = (product: any) => {

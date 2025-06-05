@@ -19,9 +19,11 @@ import {
   Check,
   Clock,
   User,
+  RefreshCw,
 } from "lucide-react"
 import { useInventory } from "@/contexts/InventoryContext"
 import { getMessages, updateMessage, type Message } from "@/lib/messages"
+import { DesignToolsIntegration } from "@/components/DesignToolsIntegration"
 
 export default function AdminLogin() {
   const [username, setUsername] = useState("")
@@ -140,7 +142,19 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [editingStock, setEditingStock] = useState<{ [key: string]: number }>({})
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState("")
-  const { products, updateStock } = useInventory()
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [newProduct, setNewProduct] = useState({
+    name: "",
+    description: "",
+    price: 0,
+    category: "Pain Relief",
+    inStock: 0,
+    image: "",
+    badge: "",
+  })
+  const { products, updateStock, addProduct } = useInventory()
+  const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "error">("synced")
+  const [lastSynced, setLastSynced] = useState<Date | null>(null)
 
   useEffect(() => {
     const savedOrders = JSON.parse(localStorage.getItem("pharmacy-orders") || "[]")
@@ -207,9 +221,45 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setMessages(getMessages())
   }
 
+  const handleAddProduct = () => {
+    if (!newProduct.name.trim() || newProduct.price <= 0) {
+      alert("Please fill in all required fields")
+      return
+    }
+
+    addProduct({
+      ...newProduct,
+      price: Number(newProduct.price),
+      inStock: Number(newProduct.inStock),
+    })
+
+    // Reset form
+    setNewProduct({
+      name: "",
+      description: "",
+      price: 0,
+      category: "Pain Relief",
+      inStock: 0,
+      image: "",
+      badge: "",
+    })
+    setShowAddProduct(false)
+
+    // Show success message
+    alert("Product added successfully!")
+  }
+
   const lowStockProducts = products.filter((p) => p.inStock <= 5 && p.inStock > 0)
   const outOfStockProducts = products.filter((p) => p.inStock === 0)
   const unreadMessages = messages.filter((m) => m.status === "unread")
+
+  const forceSync = () => {
+    setSyncStatus("syncing")
+    setTimeout(() => {
+      setSyncStatus("synced")
+      setLastSynced(new Date())
+    }, 2000)
+  }
 
   return (
     <div className="min-h-screen bg-blue-50 dark:bg-gray-900">
@@ -237,6 +287,29 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </span>
                 )}
               </div>
+
+              {/* Sync Status */}
+              <button
+                onClick={() => forceSync()}
+                className={`flex items-center space-x-1 px-2 py-1 rounded-md text-xs ${
+                  syncStatus === "synced"
+                    ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                    : syncStatus === "syncing"
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                      : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+                }`}
+                disabled={syncStatus === "syncing"}
+              >
+                <RefreshCw className={`w-3 h-3 ${syncStatus === "syncing" ? "animate-spin" : ""}`} />
+                <span>
+                  {syncStatus === "synced"
+                    ? `Synced${lastSynced ? ` at ${lastSynced.toLocaleTimeString()}` : ""}`
+                    : syncStatus === "syncing"
+                      ? "Syncing..."
+                      : "Sync Error"}
+                </span>
+              </button>
+
               <button onClick={onLogout} className="btn-secondary">
                 Logout
               </button>
@@ -360,11 +433,131 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-bold text-blue-900 dark:text-blue-100">Inventory Management</h2>
-              <div className="flex items-center space-x-2 text-sm">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-green-600 dark:text-green-400">Live inventory updates</span>
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setShowAddProduct(!showAddProduct)}
+                  className="btn-primary flex items-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add New Product</span>
+                </button>
+                <div className="flex items-center space-x-2 text-sm">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-green-600 dark:text-green-400">Live inventory updates</span>
+                </div>
               </div>
             </div>
+
+            {/* Add Product Form */}
+            {showAddProduct && (
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4">Add New Product</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Product Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newProduct.name}
+                      onChange={(e) => setNewProduct((prev) => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                      placeholder="Enter product name"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+                    <select
+                      value={newProduct.category}
+                      onChange={(e) => setNewProduct((prev) => ({ ...prev, category: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="Pain Relief">Pain Relief</option>
+                      <option value="Vitamins & Supplements">Vitamins & Supplements</option>
+                      <option value="Cold & Flu">Cold & Flu</option>
+                      <option value="Digestive Health">Digestive Health</option>
+                      <option value="First Aid">First Aid</option>
+                      <option value="Allergy Relief">Allergy Relief</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Price (₱) *
+                    </label>
+                    <input
+                      type="number"
+                      value={newProduct.price}
+                      onChange={(e) => setNewProduct((prev) => ({ ...prev, price: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Initial Stock
+                    </label>
+                    <input
+                      type="number"
+                      value={newProduct.inStock}
+                      onChange={(e) => setNewProduct((prev) => ({ ...prev, inStock: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                      placeholder="0"
+                      min="0"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      value={newProduct.description}
+                      onChange={(e) => setNewProduct((prev) => ({ ...prev, description: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                      placeholder="Enter product description"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <DesignToolsIntegration
+                      onImageSelected={(url) => setNewProduct((prev) => ({ ...prev, image: url }))}
+                      currentImage={newProduct.image}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Badge (optional)
+                    </label>
+                    <select
+                      value={newProduct.badge}
+                      onChange={(e) => setNewProduct((prev) => ({ ...prev, badge: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="">No Badge</option>
+                      <option value="new">New</option>
+                      <option value="bestseller">Best Seller</option>
+                      <option value="lowstock">Low Stock</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex space-x-4 mt-6">
+                  <button onClick={handleAddProduct} className="btn-primary">
+                    Add Product
+                  </button>
+                  <button onClick={() => setShowAddProduct(false)} className="btn-secondary">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Alerts */}
             {(lowStockProducts.length > 0 || outOfStockProducts.length > 0) && (

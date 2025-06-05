@@ -9,7 +9,17 @@ export interface Message {
   replyTimestamp?: string
 }
 
-export const saveMessage = (message: Omit<Message, "id" | "timestamp" | "status">) => {
+export function getMessages(): Message[] {
+  if (typeof window === "undefined") return []
+
+  const saved = localStorage.getItem("pharmacy-messages")
+  return saved ? JSON.parse(saved) : []
+}
+
+export function saveMessage(message: Omit<Message, "id" | "timestamp" | "status">): void {
+  if (typeof window === "undefined") return
+
+  const messages = getMessages()
   const newMessage: Message = {
     ...message,
     id: Date.now().toString(),
@@ -17,27 +27,21 @@ export const saveMessage = (message: Omit<Message, "id" | "timestamp" | "status"
     status: "unread",
   }
 
-  const existingMessages = JSON.parse(localStorage.getItem("pharmacy-messages") || "[]")
-  const updatedMessages = [newMessage, ...existingMessages]
-  localStorage.setItem("pharmacy-messages", JSON.stringify(updatedMessages))
+  messages.unshift(newMessage)
+  localStorage.setItem("pharmacy-messages", JSON.stringify(messages))
 
-  // Trigger event for real-time updates
+  // Dispatch custom event for real-time updates
   window.dispatchEvent(new CustomEvent("newMessage", { detail: newMessage }))
-
-  return newMessage
 }
 
-export const getMessages = (): Message[] => {
-  return JSON.parse(localStorage.getItem("pharmacy-messages") || "[]")
-}
+export function updateMessage(messageId: string, updates: Partial<Message>): void {
+  if (typeof window === "undefined") return
 
-export const updateMessage = (messageId: string, updates: Partial<Message>) => {
   const messages = getMessages()
   const updatedMessages = messages.map((msg) => (msg.id === messageId ? { ...msg, ...updates } : msg))
+
   localStorage.setItem("pharmacy-messages", JSON.stringify(updatedMessages))
 
-  // Trigger event for real-time updates
-  window.dispatchEvent(new CustomEvent("messageUpdate", { detail: { messageId, updates } }))
-
-  return updatedMessages
+  // Dispatch custom event for real-time updates
+  window.dispatchEvent(new CustomEvent("messageUpdate"))
 }
